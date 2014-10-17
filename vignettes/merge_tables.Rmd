@@ -1,0 +1,127 @@
+Importing from production database
+----------------------------------
+
+```{bash}
+mysql -u dlebauer -p"bety" ebi_production < ebi_productiondump.sql
+```
+
+```{sql}
+delete from traits where user_id not = 15;
+```
+
+```{r}
+settings <- list(database = list(dbname = "ebi_production", username = "dlebauer", password = "bety"))
+con <- query.base.con(settings)
+
+
+tables <- query.base("show tables;")[,1]
+bety <- pull.data.tables(tables)
+save(bety, file = "data/bety.RData")
+for(table in tables){
+  write.csv(bety[[table]], file.path("data", paste0(table, ".csv")))
+}
+```
+
+```{r}
+library(PEcAn.DB)
+library(PEcAn.utils)
+library(pecandb)
+settings <- list(database = list(driver = "MySQL", 
+                                 username = "dlebauer", 
+                                 password = "bety", 
+                                 dbname = "ebi_production", 
+                                 host = "localhost"))
+
+create.views(views = "traitsview")
+traits <- data.table(query.base("select * from traitsview;"))
+### return only soil respiration data entered by Moein 
+ghgtraits <- traits[trait %in% c("Rsoil_annual", "Rsoil_het_annual", "R_root_fine_annual", "Soil Het Respiration ", "Soil Respiration", "soil_respiration_m2"),]
+# keycols <- c("site_id", "treatment_id", "scientificname", "citation_id", "date")
+# setkeyv(ghgtraits, keycols)
+# 
+# x <- ghgtraits[,interaction(site_id, treatment_id, scientificname, citation_id, date)]
+# x <- ghgtraits[,.SD, by = list()]
+
+setkey(entity, id)
+
+mt <- bety$managements_treatments[treatment_id %in% ghgtraits$treatment_id, 
+                                  list(treatment_id, management_id)]
+mt2 <- merge(mt, bety$managements, by = "management_id", all.y = FALSE)
+
+### identify citations with warming studies
+warming_treatments <- mt2[grepl("warming", mgmttype), unique(treatment_id)]
+warming_sites <- ghgtraits[treatment_id %in% warming_treatments, list(site_id, site, city, author, cityear), by = citation_id]
+ghgtraits_warming <- ghgtraits[site_id %in% warming_sites$site_id,] 
+
+
+### extract covariates
+
+soil_metvars <- bety$variables[name == "soilT" | grepl("SWC", bety$variables$name),
+                               list(variable_id, description, units, name)]
+soil_metcovars <- bety$covariates[variable_id %in% soil_metvars$variable_id &
+                              trait_id %in% ghgtraits_warming$trait_id,
+                                  list(trait_id, variable_id, level)]
+soil_metcovars <- rbind(merge(soil_metcovars, soil_metvars, by = "variable_id")[,list(trait_id, level, name)],
+                        traits[grepl("Moein", user) & (trait == "soilT" | grepl("SWC", trait)) , list(trait_id, level = mean, name = trait)])
+
+SWCvol_covars <- soil_metcovars[name == "SWC_volumetric", list(trait_id, SWCvol = level)]
+SWCgr_covars <- soil_metcovars[grepl("SWC_gravimetric", name), list(trait_id, SWCgr = level)]
+
+temp_covars <- rbind(soil_metcovars[name == "soilT", list(trait_id, soilT = level)])
+### there are no studies with soil moisture covariates
+testthat::expect_equal(sum(bety$covariates[variable_id %in% c(412,473), unique(trait_id)] %in% ghgtraits_warming$trait_id), 0)
+
+### merge soilT, SWC with ghgtraits_warming
+
+ghgtraits_warming <- merge(ghgtraits_warming, temp_covars, by = "trait_id", all.x = TRUE)
+ghgtraits_warming <- merge(ghgtraits_warming, SWCvol_covars, by = "trait_id", all.x = TRUE)
+ghgtraits_warming <- merge(ghgtraits_warming, SWCgr_covars, by = "trait_id", all.x = TRUE)
+
+### edit (hack) the "scientificname" and "genus" fields to use commonname
+
+ghgtraits_warming[citation_id %in% c(541, 675)]$genus <- "Evergreen"
+ghgtraits_warming[citation_id == 543]$genus <- "Deciduous"
+
+### get managements
+
+mgmts <- bety$managements[mgmttype %in% c("warming_soil", "warming_air", "initiation of natural succession", "planting"),list(management_id, date, mgmttype, level)]
+mgmts <- merge(mgmts, bety$managements_treatments, by = "management_id", all.x = TRUE)
+
+warming_soil <- mgmts[mgmttype == "warming_soil", list(treatment_id, warming_soil = date, dT_soil = level)]
+warming_air <- mgmts[mgmttype == "warming_air", list(treatment_id, warming_air = date, dT_air = level)]
+succession <- mgmts[mgmttype == "warming_air", list(treatment_id, succession = date)]
+planting <- mgmts[mgmttype == "warming_air", list(treatment_id, planting = date)]
+
+x <- ghgtraits_warming
+x <- merge(x, warming_soil, by = "treatment_id", all.x = TRUE)
+x <- merge(x, warming_air, by = "treatment_id", all.x = TRUE)
+x <- merge(x, succession, by = "treatment_id", all.x = TRUE)
+x <- merge(x, planting, by = "treatment_id", all.x = TRUE)
+
+trait_metcovars <- traits[trait %in% c("soilT") | grepl("SWC", trait), 
+                         list(lat, lon, treatment_id, scientificname, date, trait, mean)]
+
+write.csv(x, "~/kristasdata.csv")
+write.csv(trait_metcovars, "~/kristas_misc_covariates.csv")
+
+### Which studies do / do not have soilT data
+x[, list(withoutT = sum(!is.na(soilT)), withT = sum(is.na(soilT))), by = author]
+
+### Which studies do / do not have SWC data
+
+swc_check <- x[,list(withSWC=is.na(SWCgr+SWCvol), author)]
+swc_check[,sum(withSWC)/length(withSWC), by = author]
+
+```
+
+You can also embed plots, for example:
+
+```{r fig.width=7, fig.height=6}
+ghgtraits_warming[,plot(soilT, mean)]
+require(ggplot2)
+ggplot(ghgtraits_warming) + geom_point(aes(soilT, mean, color = genus, shape = site))
+
+
+ggplot(ghgtraits_warming, aes(soilT, mean)) + geom_point(aes(shape = genus, color = trt)) + facet_wrap(~ author)
+
+```

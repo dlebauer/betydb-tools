@@ -1,0 +1,16 @@
+Package: betydb-tools
+Title: Tools for accessing data in BETYdb
+Version: 0.1
+Authors@R: "David LeBauer <dlebauer@illinois.edu> [aut, cre]"
+Depends: R (>= 2.14)
+LazyData: true
+Maintainer: David LeBauer <dlebauer@gmail.com>
+Description: Set of functions and scripts for extracting data from BETYdb. This package includes a subset of functions from the PEcAn.DB package.
+License: University of Illinois/NCSA Open Source License
+LazyLoad: yes
+Imports:
+    data.table,
+    lubridate,
+    reshape2,
+    xtable,
+    ggplot2
