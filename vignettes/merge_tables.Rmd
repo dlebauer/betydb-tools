@@ -1,6 +1,17 @@
-Importing from production database
+Importing from database
 ----------------------------------
 
+You can download individual tables using user access permissions by appending '.csv' to the tablename, e.g. `http://<your_bety_host>/citations.csv`where `<your_bety_host>` might be betydb.org
+
+```{r}
+bety <- list()
+for (table in c("sites", "citations")){
+  file <- paste0(table, '.csv')
+  url <- paste0('https://betydb.org/', file)
+  download.file(url, destfile = file, method = "curl") ## requires permissions at server level
+  bety[[table]] <- read.csv(paste0(table, ".csv"))
+}
+```
 
 ```{r}
 traits <- data.table(query.base("select * from traitsview;"))
