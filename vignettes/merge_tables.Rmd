@@ -1,38 +1,8 @@
 Importing from production database
 ----------------------------------
 
-```{bash}
-mysql -u dlebauer -p"bety" ebi_production < ebi_productiondump.sql
-```
-
-```{sql}
-delete from traits where user_id not = 15;
-```
 
 ```{r}
-settings <- list(database = list(dbname = "ebi_production", username = "dlebauer", password = "bety"))
-con <- query.base.con(settings)
-
-
-tables <- query.base("show tables;")[,1]
-bety <- pull.data.tables(tables)
-save(bety, file = "data/bety.RData")
-for(table in tables){
-  write.csv(bety[[table]], file.path("data", paste0(table, ".csv")))
-}
-```
-
-```{r}
-library(PEcAn.DB)
-library(PEcAn.utils)
-library(pecandb)
-settings <- list(database = list(driver = "MySQL", 
-                                 username = "dlebauer", 
-                                 password = "bety", 
-                                 dbname = "ebi_production", 
-                                 host = "localhost"))
-
-create.views(views = "traitsview")
 traits <- data.table(query.base("select * from traitsview;"))
 ### return only soil respiration data entered by Moein 
 ghgtraits <- traits[trait %in% c("Rsoil_annual", "Rsoil_het_annual", "R_root_fine_annual", "Soil Het Respiration ", "Soil Respiration", "soil_respiration_m2"),]
