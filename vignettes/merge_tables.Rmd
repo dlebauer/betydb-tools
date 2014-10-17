@@ -13,6 +13,8 @@ for (table in c("sites", "citations")){
 }
 ```
 
+There are other ways, in particular there is the PEcAn.DB package. However, for just bulk downloading tables, either using the RPostgreSQL package to submit SQL queries. I have only started testing it out, but the new  [`dplyr`](http://cran.r-project.org/web/packages/dplyr/vignettes/databases.html) package looks very promising as a database interface from R.
+
 ```{r}
 traits <- data.table(query.base("select * from traitsview;"))
 ### return only soil respiration data entered by Moein 
